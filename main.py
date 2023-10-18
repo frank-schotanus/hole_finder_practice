@@ -1,54 +1,49 @@
 import cv2
 import numpy as np
 
-filename = 'square.jpg'
+filename = 'subsquare.jpg'
 
 #read in images
-og_img = cv2.imread(filename, cv2.IMREAD_COLOR)
+img = cv2.imread(filename, cv2.IMREAD_COLOR)
+bw_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+template = cv2.imread('holetemplate.jpg', cv2.IMREAD_COLOR)
+bw_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
 
-#convert to black and white
-bw_img = cv2.cvtColor(og_img, cv2.COLOR_BGR2GRAY)
+#resizing template image if needed
+if(filename=='square.jpg'):
+    dsize = (40, 40)
+    bw_template = cv2.resize(bw_template,dsize)
+w, h = bw_template.shape[::-1]
 
-"""
-#changing contrast & brightness
-#currently doesn't work for subsquare.jpg(??)
-alpha = 2.5  # Increase contrast(>1)
-beta = 0    #brightness(<0 dim, >0 bright)
-cntrst_img = cv2.convertScaleAbs(bw_img, alpha=alpha, beta=beta)
-"""
+#finding matches, loc = tuple of coordinates(row, column)
+res = cv2.matchTemplate(bw_img, bw_template, cv2.TM_CCOEFF_NORMED)
+threshold = .65 #adjust as needed
+loc = np.where(res >= threshold)
 
-#apply blur
-img = cv2.GaussianBlur(bw_img, (13, 13), 2)
+def non_max_suppression(points, radius):
+#function to get rid of all center points within one radius unit of each other
+#meant to eliminate multiple circles being drawn for one circle
+    selected_points = []
+    for pt in points:
+        add_point = True
+        for sp in selected_points:
+            if np.linalg.norm(np.array(pt) - np.array(sp)) < radius:
+                add_point = False
+                break
+        if add_point:
+            selected_points.append(pt)
+    return selected_points
 
-#establish image dimensions so measurements can be made in angstroms instead of pixels
-image_width_pixels = img.shape[1]
+unique_circle_positions = non_max_suppression(zip(*loc[::-1]), h//3)  # Adjust the radius as needed
 
-if (filename == 'subsquare.jpg'):
-    image_width_units = 107315.2
-elif(filename == 'square.jpg'):
-    image_width_units = 745881.6
-units_per_pixel = image_width_units / image_width_pixels
-angstrom_max_radius = 15000
-angstrom_min_dist = 10926
+#drawing circles and '+'
+for pt in unique_circle_positions:
+    center = (pt[0] + w // 2, pt[1] + h // 2)
+    cv2.circle(img, center, h//3, (0, 0, 255), 1)
+    cv2.line(img, (center[0] - h//5, center[1]), (center[0] + h//5, center[1]), (0, 0, 0), 1)
+    cv2.line(img, (center[0], center[1] - h//5), (center[0], center[1] + h//5), (0, 0, 0), 1)
 
-circles = cv2.HoughCircles(
-    img,
-    cv2.HOUGH_GRADIENT,
-    dp=1,  # Resolution ratio
-    minDist= int(angstrom_min_dist / units_per_pixel),  # Minimum distance between centers
-    param1=70,  # Upper threshold for Canny edge detector
-    param2=20,  # Threshold for circle detection
-    minRadius=0,  # Minimum radius
-    maxRadius = int(angstrom_max_radius / units_per_pixel )   # Maximum radius
-)
-
-#coordinates of circels
-circles = np.round(circles[0, :]).astype("int")
-
-#drawing circles on img
-for (x, y, r) in circles:
-    cv2.circle(img, (x, y), r, (0, 255, 0), 2)
-
+#showing image
 cv2.imshow("Detected Circles", img)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
