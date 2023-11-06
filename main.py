@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-filename = 'subsquare.jpg'
+filename = 'square.jpg'
 
 #read in images
 img = cv2.imread(filename, cv2.IMREAD_COLOR)
@@ -15,33 +15,40 @@ if(filename=='square.jpg'):
     bw_template = cv2.resize(bw_template,dsize)
 w, h = bw_template.shape[::-1]
 
-#finding matches, loc = tuple of coordinates(row, column)
+
 res = cv2.matchTemplate(bw_img, bw_template, cv2.TM_CCOEFF_NORMED)
-threshold = .65 #adjust as needed
-loc = np.where(res >= threshold)
+threshold = .75
+loc = np.column_stack(np.where(res >= threshold))
+scores = [res[i[0], i[1]] for i in loc]
 
-def non_max_suppression(points, radius):
-#function to get rid of all center points within one radius unit of each other
-#meant to eliminate multiple circles being drawn for one circle
-    selected_points = []
-    for pt in points:
-        add_point = True
-        for sp in selected_points:
-            if np.linalg.norm(np.array(pt) - np.array(sp)) < radius:
-                add_point = False
-                break
-        if add_point:
-            selected_points.append(pt)
-    return selected_points
 
-unique_circle_positions = non_max_suppression(zip(*loc[::-1]), h//3)  # Adjust the radius as needed
+selected_points = []
+circle = []
+circle_scores = []
+radius = h//2
+for (x, y), score in zip(loc, scores):
+    point = (x, y)
+    circle.append(point)
+    circle_scores.append(score)
+    for pt in circle:
+        if np.linalg.norm(np.array(point) - np.array(pt)) > radius:
+            circle.pop()
+            circle_scores.pop()
+            max_index = circle_scores.index(max(circle_scores))
+            selected_points.append(circle[max_index])
+            cv2.circle(img, circle[max_index], 1, (0,0,255),1)
+            circle = []
+            circle_scores = []
+            break
 
+"""
 #drawing circles and '+'
-for pt in unique_circle_positions:
-    center = (pt[0] + w // 2, pt[1] + h // 2)
-    cv2.circle(img, center, h//3, (0, 0, 255), 1)
+for pt in selected_points:
+    center = (pt[0], pt[1])
+    cv2.circle(img, center, h//4, (0, 0, 255), 1)
     cv2.line(img, (center[0] - h//5, center[1]), (center[0] + h//5, center[1]), (0, 0, 0), 1)
     cv2.line(img, (center[0], center[1] - h//5), (center[0], center[1] + h//5), (0, 0, 0), 1)
+"""
 
 #showing image
 cv2.imshow("Detected Circles", img)
